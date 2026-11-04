@@ -67,33 +67,32 @@ keeps its login. The file is written atomically (`.<name>.synctmp-<uuid>`, flush
 unreadable file is reported in the app and never overwritten; a `format_version` newer than the app is
 refused. Cookies, logins, history and the selected tab are device-only and never in that folder.
 
-That folder needs the "all files access" permission, which the app asks for (banner) only when
-Synchrotron is installed; until then the list stays in the app's private storage.
+That folder needs the "all files access" permission, which the app asks for with a banner; until it is
+granted the list is empty and cannot be changed.
 
 ## Proton Drive sync (Synchrotron)
 
 The folder is set up in [Synchrotron](https://github.com/KrustyLeBot/Synchrotron) (add
 `Documents/Echoppe`, e.g. with `Apps/Echoppe` on Proton Drive); the app itself has no sync settings.
 Each time it opens it asks Synchrotron for a sync; the site list is read-only while it runs (browsing
-goes on) and is re-read afterwards. A list kept in private storage joins the folder only after a sync
-of a registered folder, merged with the saved one, so a fresh install never replaces your sites. A site
-added on one phone appears on the others, logged out: logins never travel.
+goes on) and is re-read afterwards. A site added on one phone appears on the others, logged out: logins
+never travel.
 
 ## Get the APK
 
-Every push to `main` runs the unit tests, builds the APK with GitHub Actions and publishes it as the
-single `latest` release (`Echoppe.apk`, titled "Build N"; N is also the APK version code). Download it
-from the repository's Releases page. Pull requests only upload the APK as a workflow artifact.
+Every push to `main` runs the unit tests, builds the APK signed with the release key and publishes it
+as the single `latest` release (`Echoppe.apk`, titled "Échoppe build N"; N is also the APK version
+code). Download it from the repository's Releases page. Signing key, secrets and CI: `docs/RELEASE.md`.
 
 In the app, a banner offers each new build when the app opens (Réglages → Mise à jour checks by hand);
 it downloads the APK, checks its size and SHA-256, and opens Android's install screen (the phone asks
 once to allow installs from this app). The downloaded file is deleted the next time the updated app
-starts. Every build is signed with the same key (`app/debug.keystore`), so updates install over the old
-app.
+starts. Every build is signed with the same key, so updates install over the old app.
 
 ## Build locally
 
-JDK 17 and the Android SDK 35 are required:
+JDK 17 and the Android SDK 35 are required. Without the release key, a local build is signed with the
+SDK's debug key, so it cannot update an installed release build:
 
 ```
 ./gradlew testDebugUnitTest assembleRelease

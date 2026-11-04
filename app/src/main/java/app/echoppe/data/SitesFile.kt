@@ -45,6 +45,5 @@ object SitesFile {
         }.distinctBy { it.id }
     }
 
-    /** [theirs] keeps its order and gets the sites of [mine] it lacks, so nothing is lost. */
     fun merge(theirs: List<Site>, mine: List<Site>): List<Site> = theirs + mine.filter { m -> theirs.none { it.id == m.id } }
 }

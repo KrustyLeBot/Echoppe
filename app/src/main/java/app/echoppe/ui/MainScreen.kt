@@ -137,13 +137,13 @@ private fun MainScreen(vm: EchoppeViewModel, pool: WebPool, snackbar: SnackbarHo
             vm.storeError?.let { SuiteBanner(it, tone = Tone.Error, title = "Liste des sites illisible", icon = Icons.Default.ErrorOutline) }
             if (vm.syncing) SuiteBanner("Liste des sites en lecture seule le temps de la synchro.", title = "Synchronisation", icon = Icons.Default.Sync, progress = -1f)
             if (vm.needsStorageAccess) {
-                SuiteBanner("Autorise l'accès aux fichiers pour que Synchrotron sauvegarde ta liste de sites (${vm.syncFolder}).", icon = Icons.Default.Folder) {
+                SuiteBanner("Ta liste de sites est enregistrée dans ${vm.syncFolder}, synchronisé par Synchrotron : autorise l'accès aux fichiers.", title = "Accès aux fichiers", icon = Icons.Default.Folder) {
                     TextButton(onClick = onAllowStorage) { Text("Autoriser") }
                 }
             }
             UpdateBanner(vm.updates)
             if (site == null) {
-                EmptyState(onAdd = { adding = true })
+                EmptyState(onAdd = { if (!vm.readOnly()) adding = true })
             } else {
                 val state = pool.state(site.id)
                 if (state.progress < 100) LinearProgressIndicator(progress = { state.progress / 100f }, modifier = Modifier.fillMaxWidth())

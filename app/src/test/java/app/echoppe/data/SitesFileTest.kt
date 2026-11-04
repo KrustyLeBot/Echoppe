@@ -33,8 +33,4 @@ class SitesFileTest {
         assertThrows(Exception::class.java) { SitesFile.decode("""{"sites":[""") }
     }
 
-    @Test fun mergeKeepsTheirOrderAndAddsMine() {
-        val c = Site("c3", "Cdiscount", "https://cdiscount.com/")
-        assertEquals(listOf(b, a, c), SitesFile.merge(listOf(b, a), listOf(a.copy(name = "mine"), c)))
-    }
 }

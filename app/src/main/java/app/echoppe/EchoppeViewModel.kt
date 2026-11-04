@@ -45,8 +45,8 @@ class EchoppeViewModel(app: Application) : AndroidViewModel(app) {
     /** A sync is running: the site list is read-only until it ends (browsing goes on). */
     var syncing by mutableStateOf(false)
         private set
-    /** Synchrotron is installed but the app may not write `Documents/Echoppe` yet: ask for it. */
-    var needsStorageAccess by mutableStateOf(false)
+    /** The app may not read and write `Documents/Echoppe` yet: ask for it. */
+    var needsStorageAccess by mutableStateOf(!echoppe.siteStore.hasStorageAccess())
         private set
     private var stopSync: (() -> Unit)? = null
 
@@ -68,11 +68,16 @@ class EchoppeViewModel(app: Application) : AndroidViewModel(app) {
         sites = readSites()
     }
 
-    /** Asks Synchrotron for a sync so the site list is up to date when the app opens. */
+    /**
+     * Checks the folder permission (granted from Android's settings, so re-checked each time the app
+     * comes back), then asks Synchrotron for a sync so the site list is up to date.
+     */
     fun syncOnOpen() {
         if (syncing) return
-        needsStorageAccess = !echoppe.siteStore.hasStorageAccess() && SynchrotronClient.isInstalled(echoppe)
-        if (!echoppe.siteStore.hasStorageAccess()) return
+        val granted = echoppe.siteStore.hasStorageAccess()
+        if (granted && needsStorageAccess) reloadSites()
+        needsStorageAccess = !granted
+        if (!granted) return
         // So the folder can be picked in Synchrotron before the first site is saved there.
         File(echoppe.siteStore.syncPath).mkdirs()
         stopSync?.invoke()
@@ -81,30 +86,23 @@ class EchoppeViewModel(app: Application) : AndroidViewModel(app) {
                 SyncState.Syncing -> syncing = true
                 is SyncState.Done -> {
                     syncing = false
-                    if (moveToFolder() || state.changes > 0) reloadSites()
+                    if (state.changes > 0) reloadSites()
                     if (state.changes > 0) show("Sites synchronisés")
                 }
                 is SyncState.Failed -> { syncing = false; show("Échec de la synchro") }
                 SyncState.TimedOut -> { syncing = false; show("Synchro longue : elle continue en arrière-plan") }
                 is SyncState.Skipped -> {
                     syncing = false
-                    if (state.reason in SKIPS_WITHOUT_REMOTE_DATA && moveToFolder()) reloadSites()
                     if (state.reason == SkipReason.NEEDS_SETUP) show("Termine la configuration dans Synchrotron")
                 }
             }
         }
     }
 
-    private fun moveToFolder(): Boolean = try {
-        echoppe.siteStore.moveToFolder()
-    } catch (e: Exception) {
-        storeError = e.message
-        false
-    }
-
     /** True when the list cannot be changed now (sync running or unreadable file), with the reason shown. */
     fun readOnly(): Boolean {
         when {
+            needsStorageAccess -> show("Autorise d'abord l'accès aux fichiers (bandeau en haut)")
             syncing -> show("Synchronisation en cours…")
             storeError != null -> show("sites.json est illisible : corrige-le ou supprime-le")
             else -> return false
@@ -165,12 +163,5 @@ class EchoppeViewModel(app: Application) : AndroidViewModel(app) {
 
     private companion object {
         const val KEY_SELECTED = "selected"
-
-        /**
-         * Proton Drive's copy is already here (or there is no Synchrotron): the private list can move to
-         * the synced folder. Not while the folder is unregistered: the first sync after registering it
-         * would then push that list over the saved one.
-         */
-        val SKIPS_WITHOUT_REMOTE_DATA = setOf(SkipReason.NOT_INSTALLED, SkipReason.FRESH, SkipReason.COOLDOWN)
     }
 }

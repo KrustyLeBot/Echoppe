@@ -17,22 +17,24 @@ android {
         versionName = "1.0"
     }
 
-    // Fixed key committed on purpose: every build is signed the same way, so updates install over
-    // the existing app. It is only a debug key, not a secret.
     signingConfigs {
-        getByName("debug") {
-            storeFile = file("debug.keystore")
-            storePassword = "android"
-            keyAlias = "androiddebugkey"
-            keyPassword = "android"
+        // Fixed release key, injected by CI from the `release` environment's secrets. Never committed.
+        val keystore = System.getenv("ECHOPPE_KEYSTORE")
+        if (keystore != null && file(keystore).exists()) {
+            create("release") {
+                storeFile = file(keystore)
+                storePassword = System.getenv("ECHOPPE_KEYSTORE_PASSWORD")
+                keyAlias = System.getenv("ECHOPPE_KEY_ALIAS") ?: "echoppe"
+                keyPassword = System.getenv("ECHOPPE_KEY_PASSWORD")
+            }
         }
     }
 
     buildTypes {
         release {
             isMinifyEnabled = false
-            // Signed with the debug key so the release APK can be installed directly.
-            signingConfig = signingConfigs.getByName("debug")
+            // A local build without the key is signed with the SDK's debug key, so it still installs.
+            signingConfig = signingConfigs.findByName("release") ?: signingConfigs.getByName("debug")
         }
     }
 
