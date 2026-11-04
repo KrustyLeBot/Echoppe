@@ -16,13 +16,15 @@ import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.flow.receiveAsFlow
 import java.io.File
 
-enum class Screen { Main, Settings }
+enum class Screen { Main, Settings, Extension }
 
 class EchoppeViewModel(app: Application) : AndroidViewModel(app) {
     private val echoppe = app as EchoppeApp
     private val prefs = app.getSharedPreferences("ui", Context.MODE_PRIVATE)
 
     var screen by mutableStateOf(Screen.Main)
+    /** The extension page [Screen.Extension] shows (uBlock's dashboard, Consent-O-Matic's settings). */
+    var extensionPage by mutableStateOf<Pair<String, String>?>(null)
 
     var storeError by mutableStateOf<String?>(null)
         private set

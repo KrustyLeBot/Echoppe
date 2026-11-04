@@ -4,7 +4,7 @@ import org.json.JSONArray
 import org.json.JSONObject
 
 /**
- * `sites.json`: `{"format_version": 1, "sites": [{"id", "name", "url", "desktop", "block_ads", "block_trackers", "reject_cookies"}]}`,
+ * `sites.json`: `{"format_version": 1, "sites": [{"id", "name", "url", "desktop"}]}`,
  * in tab order. Unknown fields are ignored, missing optional ones take their defaults.
  */
 object SitesFile {
@@ -23,9 +23,6 @@ object SitesFile {
                     .put("name", it.name)
                     .put("url", it.url)
                     .put("desktop", it.desktop)
-                    .put("block_ads", it.blockAds)
-                    .put("block_trackers", it.blockTrackers)
-                    .put("reject_cookies", it.rejectCookies)
             )
         }
     }
@@ -42,9 +39,6 @@ object SitesFile {
                 name = o.getString("name"),
                 url = o.getString("url"),
                 desktop = o.optBoolean("desktop", false),
-                blockAds = o.optBoolean("block_ads", true),
-                blockTrackers = o.optBoolean("block_trackers", true),
-                rejectCookies = o.optBoolean("reject_cookies", true),
             )
         }.distinctBy { it.id }
     }

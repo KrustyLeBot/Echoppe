@@ -1,12 +1,14 @@
 plugins {
     id("com.android.application")
-    id("org.jetbrains.kotlin.android")
     id("org.jetbrains.kotlin.plugin.compose")
 }
 
 android {
     namespace = "app.echoppe"
-    compileSdk = 35
+    // GeckoView (the Firefox engine) is built against Android 17 (API 37.2).
+    compileSdk {
+        version = release(37) { minorApiLevel = 2 }
+    }
 
     defaultConfig {
         applicationId = "app.echoppe"
@@ -32,7 +34,9 @@ android {
 
     buildTypes {
         release {
-            isMinifyEnabled = false
+            // GeckoView alone is ~90 MB: R8 keeps the rest small.
+            isMinifyEnabled = true
+            isShrinkResources = true
             // A local build without the key is signed with the SDK's debug key, so it still installs.
             signingConfig = signingConfigs.findByName("release") ?: signingConfigs.getByName("debug")
         }
@@ -42,8 +46,9 @@ android {
         sourceCompatibility = JavaVersion.VERSION_17
         targetCompatibility = JavaVersion.VERSION_17
     }
-    kotlinOptions {
-        jvmTarget = "17"
+    packaging {
+        // Compressed native libraries: about half the APK size, unpacked once at install.
+        jniLibs { useLegacyPackaging = true }
     }
     buildFeatures {
         compose = true
@@ -59,7 +64,9 @@ dependencies {
     implementation("androidx.lifecycle:lifecycle-viewmodel-compose:2.8.7")
     implementation("androidx.lifecycle:lifecycle-runtime-ktx:2.8.7")
     implementation("androidx.core:core-ktx:1.16.0")
-    implementation("androidx.webkit:webkit:1.14.0")
+    // Firefox's engine, so that real extensions (uBlock Origin, Consent-O-Matic) run in every tab.
+    // Pinned on purpose: bump it with each Firefox release for its security fixes.
+    implementation("org.mozilla.geckoview:geckoview-arm64-v8a:159.0.20261102144711")
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.10.1")
 
     testImplementation("junit:junit:4.13.2")

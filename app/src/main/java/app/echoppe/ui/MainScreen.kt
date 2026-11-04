@@ -65,6 +65,13 @@ import androidx.compose.runtime.mutableStateMapOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import androidx.compose.foundation.layout.fillMaxHeight
+import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.ModalBottomSheet
+import androidx.compose.material3.rememberModalBottomSheetState
+import androidx.compose.runtime.DisposableEffect
+import androidx.compose.material.icons.filled.Cookie
+import app.echoppe.suite.SuiteTopBar
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -88,24 +95,31 @@ import app.echoppe.data.Site
 import app.echoppe.suite.SuiteBanner
 import app.echoppe.suite.Tone
 import app.echoppe.suite.UpdateBanner
-import app.echoppe.web.WebPool
+import app.echoppe.web.Extensions
+import app.echoppe.web.Tabs
+import org.mozilla.geckoview.GeckoRuntime
+import org.mozilla.geckoview.GeckoSession
+import org.mozilla.geckoview.GeckoView
 
 @Composable
-fun EchoppeRoot(vm: EchoppeViewModel, pool: WebPool, onAllowStorage: () -> Unit) {
+fun EchoppeRoot(vm: EchoppeViewModel, tabs: Tabs, extensions: Extensions, runtime: GeckoRuntime, onAllowStorage: () -> Unit) {
     val snackbar = remember { SnackbarHostState() }
     LaunchedEffect(Unit) { vm.notices.collect { snackbar.showSnackbar(it) } }
-    // Sites removed elsewhere (another phone, through the sync) lose their live WebView too.
-    LaunchedEffect(vm.sites) { pool.retain(vm.sites.map { it.id }.toSet()) }
-    LaunchedEffect(pool.filters.version) { pool.filtersChanged() }
-    BackHandler(enabled = vm.screen != Screen.Main) { vm.screen = Screen.Main }
+    // Sites removed elsewhere (another phone, through the sync) lose their open tab too.
+    LaunchedEffect(vm.sites) { tabs.retain(vm.sites.map { it.id }.toSet()) }
+    BackHandler(enabled = vm.screen != Screen.Main) { vm.screen = if (vm.screen == Screen.Extension) Screen.Settings else Screen.Main }
     when (vm.screen) {
-        Screen.Main -> MainScreen(vm, pool, snackbar, onAllowStorage)
-        Screen.Settings -> SettingsScreen(vm, pool, snackbar)
+        Screen.Main -> MainScreen(vm, tabs, extensions, snackbar, onAllowStorage)
+        Screen.Settings -> SettingsScreen(vm, tabs, extensions, snackbar)
+        Screen.Extension -> vm.extensionPage?.let { (title, url) ->
+            ExtensionScreen(title, url, runtime, onBack = { vm.screen = Screen.Settings })
+        }
     }
+    extensions.popup?.let { ExtensionPopup(it, onDismiss = extensions::closePopup) }
 }
 
 @Composable
-private fun MainScreen(vm: EchoppeViewModel, pool: WebPool, snackbar: SnackbarHostState, onAllowStorage: () -> Unit) {
+private fun MainScreen(vm: EchoppeViewModel, tabs: Tabs, extensions: Extensions, snackbar: SnackbarHostState, onAllowStorage: () -> Unit) {
     val site = vm.selected
     var editing by remember { mutableStateOf<Site?>(null) }
     var adding by remember { mutableStateOf(false) }
@@ -113,7 +127,7 @@ private fun MainScreen(vm: EchoppeViewModel, pool: WebPool, snackbar: SnackbarHo
     val activity = LocalContext.current as Activity
     // Back walks the site's history; past its first page the app goes to the background, pages kept.
     BackHandler(enabled = site != null) {
-        if (site != null && pool.canGoBack(site.id)) pool.goBack(site.id) else activity.moveTaskToBack(true)
+        if (site != null && tabs.state(site.id).canGoBack) tabs.goBack(site.id) else activity.moveTaskToBack(true)
     }
 
     Scaffold(
@@ -130,7 +144,7 @@ private fun MainScreen(vm: EchoppeViewModel, pool: WebPool, snackbar: SnackbarHo
                     } else {
                         SiteTabs(vm, Modifier.weight(1f))
                     }
-                    SiteMenu(vm, pool, site, onAdd = { adding = true }, onEdit = { editing = it })
+                    SiteMenu(vm, tabs, extensions, site, onAdd = { adding = true }, onEdit = { editing = it })
                 }
             }
         },
@@ -143,52 +157,84 @@ private fun MainScreen(vm: EchoppeViewModel, pool: WebPool, snackbar: SnackbarHo
                     TextButton(onClick = onAllowStorage) { Text("Autoriser") }
                 }
             }
+            extensions.error?.let {
+                SuiteBanner(it, tone = Tone.Error, title = "Protections incomplètes", icon = Icons.Default.Shield) {
+                    TextButton(onClick = { extensions.install(onlyMissing = true) }) { Text("Réessayer") }
+                }
+            }
             UpdateBanner(vm.updates)
-            if (site == null) {
-                EmptyState(onAdd = { if (!vm.readOnly()) adding = true })
-            } else {
-                val state = pool.state(site.id)
-                if (state.progress < 100) LinearProgressIndicator(progress = { state.progress / 100f }, modifier = Modifier.fillMaxWidth())
-                if (pool.filters.ready) {
-                    WebHost(pool, site, Modifier.weight(1f).fillMaxWidth())
-                } else {
-                    // No page loads before the lists are ready, so none ever runs unfiltered.
-                    Box(Modifier.weight(1f).fillMaxWidth(), contentAlignment = Alignment.Center) { CircularProgressIndicator() }
+            when {
+                site == null -> EmptyState(onAdd = { if (!vm.readOnly()) adding = true })
+                // No page loads before the blockers are in, so none ever runs unprotected.
+                !extensions.ready -> Column(
+                    Modifier.weight(1f).fillMaxWidth().padding(32.dp),
+                    horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.Center,
+                ) {
+                    CircularProgressIndicator()
+                    Spacer(Modifier.height(16.dp))
+                    Text("Installation de uBlock Origin et Consent-O-Matic…", textAlign = TextAlign.Center)
+                }
+                else -> {
+                    val state = tabs.state(site.id)
+                    if (state.progress < 100) LinearProgressIndicator(progress = { state.progress / 100f }, modifier = Modifier.fillMaxWidth())
+                    GeckoHost(tabs, site, Modifier.weight(1f).fillMaxWidth())
                 }
             }
         }
     }
 
-    if (adding) SiteDialog(null, pool, onDismiss = { adding = false }, onSave = { if (vm.upsert(it)) adding = false })
+    if (adding) SiteDialog(null, onDismiss = { adding = false }, onSave = { if (vm.upsert(it)) adding = false })
     editing?.let { s ->
         SiteDialog(
-            s, pool,
+            s,
             onDismiss = { editing = null },
             onSave = { if (vm.upsert(it)) editing = null },
-            onRemove = { if (vm.remove(s)) { pool.remove(s.id); editing = null } },
-            onClear = { pool.clearData(s); vm.show("Données de ${s.name} effacées"); editing = null },
+            onRemove = { if (vm.remove(s)) { tabs.remove(s.id); editing = null } },
+            onClear = { tabs.clearData(s); vm.show("Données de ${s.name} effacées"); editing = null },
         )
     }
 }
 
-/** The site's WebView, moved into this screen; switching tabs swaps the view without reloading. */
+/** The one GeckoView of the screen; switching tabs swaps its session without reloading. */
 @Composable
-private fun WebHost(pool: WebPool, site: Site, modifier: Modifier) {
-    // A new host when the pool dropped its WebViews (renderer crash), so the rebuilt one is attached.
-    key(pool.generation) { AndroidView(
-        factory = { FrameLayout(it) },
+private fun GeckoHost(tabs: Tabs, site: Site, modifier: Modifier) {
+    AndroidView(
+        factory = { GeckoView(it) },
         modifier = modifier,
-        update = { host ->
-            val wv = pool.view(site)
-            if (wv.parent !== host) {
-                (wv.parent as? ViewGroup)?.removeView(wv)
-                host.removeAllViews()
-                host.addView(wv, FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT))
-            }
-            pool.show(site.id)
+        update = { view ->
+            // Read so that a tab rebuilt after a crash is attached again.
+            if (tabs.restarted >= 0) tabs.show(site, view)
         },
-        onRelease = { it.removeAllViews() },
-    ) }
+        onRelease = { it.releaseSession() },
+    )
+}
+
+/** An extension's popup (uBlock's switch for this site and element picker, Consent-O-Matic's). */
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun ExtensionPopup(session: GeckoSession, onDismiss: () -> Unit) {
+    ModalBottomSheet(onDismissRequest = onDismiss, sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)) {
+        AndroidView(
+            // The sheet is its own window: a SurfaceView would be drawn behind it.
+            factory = { GeckoView(it).apply { setViewBackend(GeckoView.BACKEND_TEXTURE_VIEW); setSession(session) } },
+            modifier = Modifier.fillMaxWidth().fillMaxHeight(0.8f),
+            onRelease = { it.releaseSession() },
+        )
+    }
+}
+
+/** An extension's settings page, full screen. */
+@Composable
+private fun ExtensionScreen(title: String, url: String, runtime: GeckoRuntime, onBack: () -> Unit) {
+    val session = remember(url) { GeckoSession().apply { open(runtime); loadUri(url) } }
+    DisposableEffect(session) { onDispose { session.close() } }
+    Scaffold(topBar = { SuiteTopBar(title, onBack = onBack) }) { padding ->
+        AndroidView(
+            factory = { GeckoView(it).apply { setSession(session) } },
+            modifier = Modifier.padding(padding).consumeWindowInsets(padding).fillMaxSize().imePadding(),
+            onRelease = { it.releaseSession() },
+        )
+    }
 }
 
 @Composable
@@ -217,18 +263,18 @@ private fun EmptyState(onAdd: () -> Unit) {
 }
 
 @Composable
-private fun SiteMenu(vm: EchoppeViewModel, pool: WebPool, site: Site?, onAdd: () -> Unit, onEdit: (Site) -> Unit) {
+private fun SiteMenu(vm: EchoppeViewModel, tabs: Tabs, extensions: Extensions, site: Site?, onAdd: () -> Unit, onEdit: (Site) -> Unit) {
     var open by remember { mutableStateOf(false) }
     val context = LocalContext.current
     Box {
         IconButton(onClick = { open = true }) { Icon(Icons.Default.MoreVert, "Menu") }
         DropdownMenu(expanded = open, onDismissRequest = { open = false }) {
             if (site != null) {
-                val state = pool.state(site.id)
+                val state = tabs.state(site.id)
                 DropdownMenuItem(text = { Text("Recharger") }, leadingIcon = { Icon(Icons.Default.Refresh, null) },
-                    onClick = { open = false; pool.reload(site.id) })
+                    onClick = { open = false; tabs.reload(site.id) })
                 DropdownMenuItem(text = { Text("Accueil du site") }, leadingIcon = { Icon(Icons.Default.Home, null) },
-                    onClick = { open = false; pool.home(site) })
+                    onClick = { open = false; tabs.home(site) })
                 DropdownMenuItem(text = { Text("Copier l'adresse") }, leadingIcon = { Icon(Icons.Default.ContentCopy, null) },
                     onClick = {
                         open = false
@@ -237,17 +283,21 @@ private fun SiteMenu(vm: EchoppeViewModel, pool: WebPool, site: Site?, onAdd: ()
                     })
                 DropdownMenuItem(text = { Text("Modifier ${site.name}") }, leadingIcon = { Icon(Icons.Default.Edit, null) },
                     onClick = { open = false; onEdit(site) })
-                DropdownMenuItem(
-                    text = {
-                        Text(
-                            if (!site.blockAds && !site.blockTrackers) "Blocage désactivé sur ce site"
-                            else "${state.blocked} requête${if (state.blocked > 1) "s" else ""} bloquée${if (state.blocked > 1) "s" else ""}",
-                        )
-                    },
-                    leadingIcon = { Icon(Icons.Default.Shield, null) },
-                    enabled = false,
-                    onClick = {},
-                )
+                HorizontalDivider()
+                tabs.session(site.id)?.let { session ->
+                    DropdownMenuItem(
+                        text = { Column { Text("uBlock Origin"); Text("Couper sur ce site, masquer un élément", style = MaterialTheme.typography.bodySmall) } },
+                        leadingIcon = { Icon(Icons.Default.Shield, null) },
+                        enabled = Extensions.UBLOCK.id in extensions.installed,
+                        onClick = { open = false; extensions.openButton(Extensions.UBLOCK, session) },
+                    )
+                    DropdownMenuItem(
+                        text = { Column { Text("Consent-O-Matic"); Text("Cookies refusés sur ce site", style = MaterialTheme.typography.bodySmall) } },
+                        leadingIcon = { Icon(Icons.Default.Cookie, null) },
+                        enabled = Extensions.CONSENT.id in extensions.installed,
+                        onClick = { open = false; extensions.openButton(Extensions.CONSENT, session) },
+                    )
+                }
                 HorizontalDivider()
             }
             DropdownMenuItem(text = { Text("Ajouter un site") }, leadingIcon = { Icon(Icons.Default.Add, null) },

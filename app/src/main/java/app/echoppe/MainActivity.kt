@@ -6,8 +6,6 @@ import android.net.Uri
 import android.os.Build
 import android.os.Bundle
 import android.provider.Settings
-import android.webkit.ValueCallback
-import android.webkit.WebChromeClient
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
@@ -17,42 +15,52 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.ui.Modifier
+import androidx.lifecycle.lifecycleScope
 import app.echoppe.ui.EchoppeRoot
 import app.echoppe.ui.EchoppeTheme
-import app.echoppe.web.WebPool
+import app.echoppe.web.Downloads
+import app.echoppe.web.Prompts
+import app.echoppe.web.Tabs
 
 class MainActivity : ComponentActivity() {
     private val vm: EchoppeViewModel by viewModels()
-    private lateinit var pool: WebPool
-    private var fileCallback: ValueCallback<Array<Uri>>? = null
+    private lateinit var tabs: Tabs
+    private var onFiles: ((List<Uri>) -> Unit)? = null
 
     private val storagePermission =
         registerForActivityResult(ActivityResultContracts.RequestMultiplePermissions()) { vm.syncOnOpen() }
 
-    private val fileChooser =
+    private val filePicker =
         registerForActivityResult(ActivityResultContracts.StartActivityForResult()) { result ->
-            fileCallback?.onReceiveValue(WebChromeClient.FileChooserParams.parseResult(result.resultCode, result.data))
-            fileCallback = null
+            val data = result.data
+            val uris = when {
+                result.resultCode != RESULT_OK || data == null -> emptyList()
+                data.clipData != null -> List(data.clipData!!.itemCount) { data.clipData!!.getItemAt(it).uri }
+                else -> listOfNotNull(data.data)
+            }
+            onFiles?.invoke(uris)
+            onFiles = null
         }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
-        pool = WebPool(this, (application as EchoppeApp).filters, vm::show) { callback, params ->
-            fileCallback?.onReceiveValue(null)
-            fileCallback = callback
+        val app = application as EchoppeApp
+        val prompts = Prompts(this) { intent, done ->
+            onFiles?.invoke(emptyList())
+            onFiles = done
             try {
-                fileChooser.launch(params.createIntent())
-                true
+                filePicker.launch(intent)
             } catch (e: Exception) {
-                fileCallback = null
-                false
+                onFiles = null
+                done(emptyList())
             }
         }
+        tabs = Tabs(this, app.runtime, app.extensions, prompts, Downloads(this, lifecycleScope, vm::show), vm::show)
         setContent {
             EchoppeTheme {
                 Surface(Modifier.fillMaxSize(), color = MaterialTheme.colorScheme.background) {
-                    EchoppeRoot(vm, pool, onAllowStorage = ::askStorageAccess)
+                    EchoppeRoot(vm, tabs, app.extensions, app.runtime, onAllowStorage = ::askStorageAccess)
                 }
             }
         }
@@ -60,18 +68,19 @@ class MainActivity : ComponentActivity() {
 
     override fun onStart() {
         super.onStart()
-        pool.onStart()
+        tabs.onStart()
         vm.syncOnOpen()
         vm.updates.checkOnOpen()
+        (application as EchoppeApp).extensions.updateIfStale()
     }
 
     override fun onStop() {
-        pool.onStop()
+        tabs.onStop()
         super.onStop()
     }
 
     override fun onDestroy() {
-        pool.destroyAll()
+        tabs.closeAll()
         super.onDestroy()
     }
 

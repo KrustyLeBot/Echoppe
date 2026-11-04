@@ -1,4 +1,0 @@
-! Échoppe's own rules, in the ads group: app banners the public lists miss or have not caught up with.
-! Same syntax as EasyList.
-amazon.ca,amazon.co.uk,amazon.com,amazon.com.au,amazon.com.be,amazon.de,amazon.es,amazon.fr,amazon.it,amazon.nl,amazon.pl,amazon.se###nav-app-banner-container
-amazon.it###smart-app-banner

@@ -6,12 +6,12 @@ import org.junit.Test
 
 class SitesFileTest {
     private val a = Site("a1", "Amazon", "https://amazon.fr/")
-    private val b = Site("b2", "Leroy Merlin", "https://www.leroymerlin.fr/", desktop = true, blockAds = false, blockTrackers = false, rejectCookies = false)
+    private val b = Site("b2", "Leroy Merlin", "https://www.leroymerlin.fr/", desktop = true)
 
     @Test fun roundTrip() = assertEquals(listOf(a, b), SitesFile.decode(SitesFile.encode(listOf(a, b))))
 
     @Test fun missingOptionalsTakeDefaults() {
-        val sites = SitesFile.decode("""{"format_version":1,"sites":[{"id":"x","name":"X","url":"https://x.fr/","extra":1}]}""")
+        val sites = SitesFile.decode("""{"format_version":1,"sites":[{"id":"x","name":"X","url":"https://x.fr/","block_trackers":false,"extra":1}]}""")
         assertEquals(listOf(Site("x", "X", "https://x.fr/")), sites)
     }
 

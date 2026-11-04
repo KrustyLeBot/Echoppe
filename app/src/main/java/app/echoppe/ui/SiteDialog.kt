@@ -29,13 +29,11 @@ import app.echoppe.data.Site
 import app.echoppe.data.SiteUrl
 import app.echoppe.suite.ConfirmDialog
 import app.echoppe.suite.SettingsHint
-import app.echoppe.web.WebPool
 
 /** Adds a site ([site] null) or edits one, with its data and removal actions. */
 @Composable
 fun SiteDialog(
     site: Site?,
-    pool: WebPool,
     onDismiss: () -> Unit,
     onSave: (Site) -> Unit,
     onRemove: () -> Unit = {},
@@ -44,9 +42,6 @@ fun SiteDialog(
     var address by remember { mutableStateOf(site?.url.orEmpty()) }
     var name by remember { mutableStateOf(site?.name.orEmpty()) }
     var desktop by remember { mutableStateOf(site?.desktop ?: false) }
-    var blockAds by remember { mutableStateOf(site?.blockAds ?: true) }
-    var blockTrackers by remember { mutableStateOf(site?.blockTrackers ?: true) }
-    var rejectCookies by remember { mutableStateOf(site?.rejectCookies ?: true) }
     var error by remember { mutableStateOf<String?>(null) }
     var confirm by remember { mutableStateOf<String?>(null) }
 
@@ -57,8 +52,7 @@ fun SiteDialog(
             return
         }
         val base = site ?: Site(Site.newId(), "", url)
-        onSave(base.copy(name = name.trim().ifEmpty { SiteUrl.defaultName(url) }, url = url, desktop = desktop,
-            blockAds = blockAds, blockTrackers = blockTrackers, rejectCookies = rejectCookies))
+        onSave(base.copy(name = name.trim().ifEmpty { SiteUrl.defaultName(url) }, url = url, desktop = desktop))
     }
 
     AlertDialog(
@@ -84,10 +78,7 @@ fun SiteDialog(
                     modifier = Modifier.fillMaxWidth(),
                 )
                 Toggle("Version ordinateur", "Pour un site dont la version mobile est moins pratique.", desktop) { desktop = it }
-                Toggle("Bloquer les pubs", "Et les bannières « ouvrir l'appli ».", blockAds) { blockAds = it }
-                Toggle("Bloquer les traqueurs", "Statistiques, pixels, enregistrement de session.", blockTrackers) { blockTrackers = it }
-                Toggle("Refuser les cookies", "Refus automatique et bandeau masqué ; la connexion et le panier restent.", rejectCookies) { rejectCookies = it }
-                SettingsHint("Coupe un blocage seulement si une page du site ne marche plus.")
+                SettingsHint("Pubs, traqueurs et cookies : uBlock Origin et Consent-O-Matic, réglables site par site depuis le menu de l'onglet.")
                 if (site != null) {
                     HorizontalDivider()
                     TextButton(onClick = { confirm = "clear" }) { Text("Effacer cookies et données") }
@@ -105,8 +96,7 @@ fun SiteDialog(
     if (site != null) when (confirm) {
         "clear" -> ConfirmDialog(
             "Effacer les données de ${site.name} ?",
-            if (pool.isolated) "Tu seras déconnecté de ce site et son panier peut être perdu. Les autres sites ne sont pas touchés."
-            else "Sans isolation, les sites partagent leurs cookies : tu seras déconnecté de TOUS les sites.",
+            "Tu seras déconnecté de ce site et son panier peut être perdu. Les autres sites ne sont pas touchés.",
             "Effacer", onConfirm = onClear, onDismiss = { confirm = null }, destructive = true,
         )
         "remove" -> ConfirmDialog(
