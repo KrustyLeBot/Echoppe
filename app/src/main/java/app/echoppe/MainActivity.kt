@@ -57,7 +57,7 @@ class MainActivity : ComponentActivity() {
                 done(emptyList())
             }
         }
-        tabs = Tabs(this, app.runtime, app.extensions, prompts, Downloads(this, lifecycleScope, vm::show), vm::show)
+        tabs = Tabs(this, app.runtime, app.extensions, prompts, Downloads(this, lifecycleScope, vm::show), vm::show, app.startup)
         setContent {
             EchoppeTheme {
                 Surface(Modifier.fillMaxSize(), color = MaterialTheme.colorScheme.background) {

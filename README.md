@@ -34,7 +34,9 @@ Android's WebView (Chromium) cannot run browser extensions, and neither can Chro
 is why the app embeds [GeckoView](https://mozilla.github.io/geckoview/), Mozilla's embeddable Firefox,
 which runs the same WebExtensions as Firefox for Android. Two of them are installed from
 addons.mozilla.org (signed by Mozilla, both « recommended » by Mozilla for Android) the first time the
-app starts; no page loads before. The app checks for new versions every 4 days (Réglages → Mettre à
+app starts; no page loads before. On later starts the tabs load at once (Gecko starts the installed
+extensions with the engine, and uBlock Origin holds the network until its filter lists are loaded).
+Réglages → Dernier démarrage shows how long the last cold start took, step by step. The app checks for new versions every 4 days (Réglages → Mettre à
 jour les extensions does it by hand).
 
 | Extension | Licence | Job |
@@ -56,7 +58,7 @@ by uBlock's cookie notice lists instead, which, under the GDPR, means no consent
 | Global Privacy Control | Sent to every site (the legal "do not sell or share" signal). |
 | No exit to other apps | Only `http(s)` pages load. `market://`, `intent://`, custom schemes and Play Store / App Store links are refused; an `intent://` link with a web fallback opens that fallback in the tab. A page can never start another app. |
 | No pop-up windows | `target=_blank` and `window.open` open in the same tab. A window opened empty, then sent elsewhere (Amazon's « Ouvrir » in its app banner), is an invisible catcher: a web page opens in the tab, an app link is refused. |
-| No permissions | Location, camera, microphone and notifications are always refused. |
+| No permissions | Location, camera, microphone and notifications are always refused. Muted autoplay (product videos) is allowed, as in Firefox; a video with sound waits for a tap. |
 | No telemetry | No analytics in the app, Firefox telemetry is not set up, login saving is off. App backup is off. |
 
 Deleting a site deletes its context (cookies, storage, cache); « Effacer cookies et données » does the
@@ -126,6 +128,7 @@ with the SDK's debug key, so it cannot update an installed release build:
 ```
 app/src/main/java/app/echoppe/
   EchoppeApp.kt, MainActivity.kt, EchoppeViewModel.kt   app, activity, state
+  Startup.kt  cold-start timings shown in Réglages
   data/       Site + SiteUrl (address parsing), SitesFile (JSON format), SiteStore, AtomicFiles
   web/        Browser (the Gecko engine and its protections), Extensions (install, update, popups),
               Tabs (one session and context per site, last page), Navigation (what may load),

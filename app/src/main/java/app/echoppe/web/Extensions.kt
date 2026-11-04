@@ -27,7 +27,7 @@ class ExtensionSpec(val id: String, val slug: String, val title: String, val rol
  * Their buttons (the per-site switch and uBlock's element picker live there) open as popups:
  * [popup] is the page to show, null when none is open.
  */
-class Extensions(private val context: Context, private val runtime: GeckoRuntime) {
+class Extensions(private val context: Context, private val runtime: GeckoRuntime, private val onReady: () -> Unit = {}) {
     private val controller = runtime.webExtensionController
     private val prefs = context.getSharedPreferences("extensions", Context.MODE_PRIVATE)
     // Each extension's button, per tab and by default.
@@ -85,6 +85,9 @@ class Extensions(private val context: Context, private val runtime: GeckoRuntime
                 extension: WebExtension, permissions: Array<String>, origins: Array<String>, dataCollection: Array<String>,
             ): GeckoResult<AllowOrDeny> = GeckoResult.fromValue(AllowOrDeny.ALLOW)
         }
+        // Already installed on an earlier start: tabs may load at once. Gecko starts the extensions with
+        // the engine, and uBlock Origin holds the network until its filter lists are loaded.
+        if (prefs.getBoolean(KEY_INSTALLED, false)) markReady()
         controller.list().accept({ list ->
             list.orEmpty().filter { ext -> SPECS.any { it.id == ext.id } }.forEach(::adopt)
             install(onlyMissing = true)
@@ -102,10 +105,11 @@ class Extensions(private val context: Context, private val runtime: GeckoRuntime
             val spec = pending.removeFirstOrNull()
             if (spec == null) {
                 installing = false
-                ready = true
+                markReady()
                 refresh()
                 if (failed.isNotEmpty()) error = "Installation impossible : ${failed.joinToString(", ")}. Vérifie la connexion."
                 else if (!onlyMissing) prefs.edit().putLong(KEY_UPDATED, System.currentTimeMillis()).apply()
+                if (SPECS.all { it.id in installed }) prefs.edit().putBoolean(KEY_INSTALLED, true).apply()
                 return
             }
             val have = installed[spec.id]
@@ -118,6 +122,12 @@ class Extensions(private val context: Context, private val runtime: GeckoRuntime
             result.accept({ ext -> ext?.let(::adopt); next() }, { failed += spec.title; next() })
         }
         next()
+    }
+
+    private fun markReady() {
+        if (ready) return
+        ready = true
+        onReady()
     }
 
     /** Looks for new versions every few days, as Firefox does. */
@@ -198,6 +208,7 @@ class Extensions(private val context: Context, private val runtime: GeckoRuntime
         private const val SCHEME = "moz-extension://"
         private const val KEY_UPDATED = "updated"
         private const val KEY_SETUP = "ublock_setup_done"
+        private const val KEY_INSTALLED = "installed"
         private const val UPDATE_EVERY_MS = 4 * 24 * 60 * 60 * 1000L
 
         val UBLOCK = ExtensionSpec("uBlock0@raymondhill.net", "ublock-origin", "uBlock Origin", "Pubs, traqueurs, bandeaux, widgets")

@@ -32,8 +32,10 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import app.echoppe.EchoppeApp
 import app.echoppe.EchoppeViewModel
 import app.echoppe.Screen
 import app.echoppe.data.Site
@@ -81,6 +83,13 @@ fun SettingsScreen(vm: EchoppeViewModel, tabs: Tabs, extensions: Extensions, sna
                 }
             }
 
+            (LocalContext.current.applicationContext as EchoppeApp).startup.last?.let { last ->
+                SectionTitle("Dernier démarrage")
+                SettingsCard {
+                    SettingsHint("Depuis le lancement de l'appli : $last.")
+                    SettingsHint("Le moteur Firefox démarre une fois par lancement ; « extensions » attend uBlock Origin et Consent-O-Matic.")
+                }
+            }
             ProtectionSettings(extensions) { title, url -> vm.extensionPage = title to url; vm.screen = Screen.Extension }
             SyncSettings(vm.syncFolder)
             UpdateSettings(vm.updates)

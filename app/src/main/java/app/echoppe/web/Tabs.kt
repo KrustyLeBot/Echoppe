@@ -9,6 +9,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
+import app.echoppe.Startup
 import app.echoppe.data.Site
 import org.mozilla.geckoview.AllowOrDeny
 import org.mozilla.geckoview.GeckoResult
@@ -39,6 +40,7 @@ class Tabs(
     private val prompts: Prompts,
     private val downloads: Downloads,
     private val onNotice: (String) -> Unit,
+    private val startup: Startup,
 ) {
     private val sessions = HashMap<String, GeckoSession>()
     private val configs = HashMap<String, Site>()
@@ -208,6 +210,10 @@ class Tabs(
             }
         }
         session.progressDelegate = object : GeckoSession.ProgressDelegate {
+            override fun onPageStart(session: GeckoSession, url: String) {
+                startup.mark(Startup.PAGE)
+            }
+
             override fun onProgressChange(session: GeckoSession, progress: Int) {
                 state.progress = progress
             }
@@ -221,15 +227,24 @@ class Tabs(
                 downloads.save(response)
             }
 
+            override fun onFirstContentfulPaint(session: GeckoSession) {
+                startup.mark(Startup.PAINT)
+            }
+
             override fun onCrash(session: GeckoSession) = restart(id)
 
             override fun onKill(session: GeckoSession) = restart(id)
         }
         session.promptDelegate = prompts
-        // Location, camera, microphone, notifications…: a shop needs none of them.
         session.permissionDelegate = object : GeckoSession.PermissionDelegate {
+            // GeckoView asks before any video starts on its own, and stores the answer for the site for
+            // good. Muted autoplay (product videos) is allowed, as in Firefox; with sound it waits for a tap.
+            // Location, camera, microphone, notifications…: refused, a shop needs none of them.
             override fun onContentPermissionRequest(session: GeckoSession, perm: ContentPermission): GeckoResult<Int> =
-                GeckoResult.fromValue(ContentPermission.VALUE_DENY)
+                GeckoResult.fromValue(
+                    if (perm.permission == GeckoSession.PermissionDelegate.PERMISSION_AUTOPLAY_INAUDIBLE) ContentPermission.VALUE_ALLOW
+                    else ContentPermission.VALUE_DENY,
+                )
 
             override fun onMediaPermissionRequest(
                 session: GeckoSession, uri: String,
