@@ -5,6 +5,7 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.rememberScrollState
@@ -17,7 +18,9 @@ import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material3.FilledTonalButton
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
+import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
@@ -41,7 +44,12 @@ import app.echoppe.suite.SettingsHint
 import app.echoppe.suite.SuiteTopBar
 import app.echoppe.suite.SyncSettings
 import app.echoppe.suite.UpdateSettings
+import app.echoppe.web.FilterLists
 import app.echoppe.web.WebPool
+import java.time.Instant
+import java.time.ZoneId
+import java.time.format.DateTimeFormatter
+import java.util.Locale
 
 @Composable
 fun SettingsScreen(vm: EchoppeViewModel, pool: WebPool, snackbar: SnackbarHostState) {
@@ -60,7 +68,12 @@ fun SettingsScreen(vm: EchoppeViewModel, pool: WebPool, snackbar: SnackbarHostSt
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         Column(Modifier.weight(1f)) {
                             Text(site.name, fontWeight = FontWeight.SemiBold)
-                            SettingsHint(listOfNotNull(site.host, "ordinateur".takeIf { site.desktop }, "traqueurs autorisés".takeIf { !site.blockTrackers }).joinToString(" · "))
+                            SettingsHint(
+                                listOfNotNull(
+                                    site.host, "ordinateur".takeIf { site.desktop }, "pubs autorisées".takeIf { !site.blockAds },
+                                    "traqueurs autorisés".takeIf { !site.blockTrackers }, "cookies acceptés".takeIf { !site.rejectCookies },
+                                ).joinToString(" · "),
+                            )
                         }
                         IconButton(onClick = { vm.move(i, i - 1); vm.orderChanged() }, enabled = i > 0) {
                             Icon(Icons.Default.ArrowUpward, "Monter")
@@ -91,14 +104,15 @@ fun SettingsScreen(vm: EchoppeViewModel, pool: WebPool, snackbar: SnackbarHostSt
                             MaterialTheme.colorScheme.error,
                         )
                     }
-                    SettingsHint("Cookies tiers refusés partout.")
-                    SettingsHint("${pool.trackerCount} domaines de traqueurs bloqués (pub, statistiques, pixels des réseaux sociaux, enregistrement de session). Désactivable site par site s'il casse une page.")
+                    SettingsHint("Cookies tiers refusés partout. Le consentement aux cookies est refusé automatiquement et les bandeaux sont masqués : seuls restent les cookies du site lui-même (connexion, panier).")
+                    SettingsHint("Pubs, bannières « ouvrir l'appli », traqueurs et bandeaux de cookies bloqués avec les listes d'Adblock Plus et uBlock Origin. Chaque blocage se coupe site par site s'il casse une page.")
                     if (pool.sendsGpc) SettingsHint("Le signal « ne pas vendre ni partager mes données » (GPC) est envoyé à chaque site.")
                     SettingsHint("Les liens vers les applis et le Play Store sont bloqués : un site ne peut jamais ouvrir une autre appli.")
                     SettingsHint("Aucune statistique d'usage envoyée par l'appli ni par la WebView.")
                 }
             }
 
+            FilterSettings(pool.filters)
             SyncSettings(vm.syncFolder)
             UpdateSettings(vm.updates)
             AboutSettings(
@@ -119,5 +133,21 @@ fun SettingsScreen(vm: EchoppeViewModel, pool: WebPool, snackbar: SnackbarHostSt
             onRemove = { if (vm.remove(s)) { pool.remove(s.id); editing = null } },
             onClear = { pool.clearData(s); vm.show("Données de ${s.name} effacées"); editing = null },
         )
+    }
+}
+
+@Composable
+private fun FilterSettings(filters: FilterLists) {
+    SectionTitle("Listes de blocage")
+    SettingsCard {
+        Text("${"%,d".format(filters.ruleCount).replace(',', ' ')} règles", fontWeight = FontWeight.SemiBold)
+        SettingsHint(FilterLists.LISTS.joinToString(" · ") { it.title } + ", plus les règles d'Échoppe.")
+        SettingsHint(
+            if (filters.lastUpdate == 0L) "Pas encore téléchargées : seules les règles d'Échoppe s'appliquent."
+            else "Mises à jour le ${DateTimeFormatter.ofPattern("d MMMM à H:mm", Locale.FRENCH).format(Instant.ofEpochMilli(filters.lastUpdate).atZone(ZoneId.systemDefault()))}, puis tous les 4 jours.",
+        )
+        filters.error?.let { SettingsHint(it, MaterialTheme.colorScheme.error) }
+        if (filters.updating) LinearProgressIndicator(Modifier.fillMaxWidth())
+        else OutlinedButton(onClick = filters::update) { Text("Mettre à jour les listes") }
     }
 }

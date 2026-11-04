@@ -42,6 +42,7 @@ import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.filled.Shield
 import androidx.compose.material.icons.filled.Sync
 import androidx.compose.material3.Button
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.HorizontalDivider
@@ -95,6 +96,7 @@ fun EchoppeRoot(vm: EchoppeViewModel, pool: WebPool, onAllowStorage: () -> Unit)
     LaunchedEffect(Unit) { vm.notices.collect { snackbar.showSnackbar(it) } }
     // Sites removed elsewhere (another phone, through the sync) lose their live WebView too.
     LaunchedEffect(vm.sites) { pool.retain(vm.sites.map { it.id }.toSet()) }
+    LaunchedEffect(pool.filters.version) { pool.filtersChanged() }
     BackHandler(enabled = vm.screen != Screen.Main) { vm.screen = Screen.Main }
     when (vm.screen) {
         Screen.Main -> MainScreen(vm, pool, snackbar, onAllowStorage)
@@ -147,7 +149,12 @@ private fun MainScreen(vm: EchoppeViewModel, pool: WebPool, snackbar: SnackbarHo
             } else {
                 val state = pool.state(site.id)
                 if (state.progress < 100) LinearProgressIndicator(progress = { state.progress / 100f }, modifier = Modifier.fillMaxWidth())
-                WebHost(pool, site, Modifier.weight(1f).fillMaxWidth())
+                if (pool.filters.ready) {
+                    WebHost(pool, site, Modifier.weight(1f).fillMaxWidth())
+                } else {
+                    // No page loads before the lists are ready, so none ever runs unfiltered.
+                    Box(Modifier.weight(1f).fillMaxWidth(), contentAlignment = Alignment.Center) { CircularProgressIndicator() }
+                }
             }
         }
     }
@@ -233,8 +240,8 @@ private fun SiteMenu(vm: EchoppeViewModel, pool: WebPool, site: Site?, onAdd: ()
                 DropdownMenuItem(
                     text = {
                         Text(
-                            if (!site.blockTrackers) "Blocage des traqueurs désactivé"
-                            else "${state.blocked} traqueur${if (state.blocked > 1) "s" else ""} bloqué${if (state.blocked > 1) "s" else ""}",
+                            if (!site.blockAds && !site.blockTrackers) "Blocage désactivé sur ce site"
+                            else "${state.blocked} requête${if (state.blocked > 1) "s" else ""} bloquée${if (state.blocked > 1) "s" else ""}",
                         )
                     },
                     leadingIcon = { Icon(Icons.Default.Shield, null) },

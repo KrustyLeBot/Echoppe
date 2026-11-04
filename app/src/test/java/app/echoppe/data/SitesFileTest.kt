@@ -6,7 +6,7 @@ import org.junit.Test
 
 class SitesFileTest {
     private val a = Site("a1", "Amazon", "https://amazon.fr/")
-    private val b = Site("b2", "Leroy Merlin", "https://www.leroymerlin.fr/", desktop = true, blockTrackers = false)
+    private val b = Site("b2", "Leroy Merlin", "https://www.leroymerlin.fr/", desktop = true, blockAds = false, blockTrackers = false, rejectCookies = false)
 
     @Test fun roundTrip() = assertEquals(listOf(a, b), SitesFile.decode(SitesFile.encode(listOf(a, b))))
 

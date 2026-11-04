@@ -1,5 +1,6 @@
 package app.echoppe.data
 
+import app.echoppe.filters.Category
 import java.net.URI
 import java.security.SecureRandom
 
@@ -12,9 +13,17 @@ data class Site(
     val name: String,
     val url: String,
     val desktop: Boolean = false,
+    val blockAds: Boolean = true,
     val blockTrackers: Boolean = true,
+    val rejectCookies: Boolean = true,
 ) {
     val host: String get() = SiteUrl.host(url) ?: url
+
+    fun blocks(category: Category): Boolean = when (category) {
+        Category.ADS -> blockAds
+        Category.TRACKERS -> blockTrackers
+        Category.COOKIES -> rejectCookies
+    }
 
     companion object {
         private val random = SecureRandom()

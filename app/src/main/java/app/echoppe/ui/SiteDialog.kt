@@ -44,7 +44,9 @@ fun SiteDialog(
     var address by remember { mutableStateOf(site?.url.orEmpty()) }
     var name by remember { mutableStateOf(site?.name.orEmpty()) }
     var desktop by remember { mutableStateOf(site?.desktop ?: false) }
+    var blockAds by remember { mutableStateOf(site?.blockAds ?: true) }
     var blockTrackers by remember { mutableStateOf(site?.blockTrackers ?: true) }
+    var rejectCookies by remember { mutableStateOf(site?.rejectCookies ?: true) }
     var error by remember { mutableStateOf<String?>(null) }
     var confirm by remember { mutableStateOf<String?>(null) }
 
@@ -55,7 +57,8 @@ fun SiteDialog(
             return
         }
         val base = site ?: Site(Site.newId(), "", url)
-        onSave(base.copy(name = name.trim().ifEmpty { SiteUrl.defaultName(url) }, url = url, desktop = desktop, blockTrackers = blockTrackers))
+        onSave(base.copy(name = name.trim().ifEmpty { SiteUrl.defaultName(url) }, url = url, desktop = desktop,
+            blockAds = blockAds, blockTrackers = blockTrackers, rejectCookies = rejectCookies))
     }
 
     AlertDialog(
@@ -81,7 +84,10 @@ fun SiteDialog(
                     modifier = Modifier.fillMaxWidth(),
                 )
                 Toggle("Version ordinateur", "Pour un site dont la version mobile est moins pratique.", desktop) { desktop = it }
-                Toggle("Bloquer les traqueurs", "À couper seulement si une page du site ne marche pas.", blockTrackers) { blockTrackers = it }
+                Toggle("Bloquer les pubs", "Et les bannières « ouvrir l'appli ».", blockAds) { blockAds = it }
+                Toggle("Bloquer les traqueurs", "Statistiques, pixels, enregistrement de session.", blockTrackers) { blockTrackers = it }
+                Toggle("Refuser les cookies", "Refus automatique et bandeau masqué ; la connexion et le panier restent.", rejectCookies) { rejectCookies = it }
+                SettingsHint("Coupe un blocage seulement si une page du site ne marche plus.")
                 if (site != null) {
                     HorizontalDivider()
                     TextButton(onClick = { confirm = "clear" }) { Text("Effacer cookies et données") }

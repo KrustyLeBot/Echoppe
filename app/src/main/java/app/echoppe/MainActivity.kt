@@ -38,7 +38,7 @@ class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
-        pool = WebPool(this, (application as EchoppeApp).trackers, vm::show) { callback, params ->
+        pool = WebPool(this, (application as EchoppeApp).filters, vm::show) { callback, params ->
             fileCallback?.onReceiveValue(null)
             fileCallback = callback
             try {

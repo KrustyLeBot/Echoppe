@@ -27,10 +27,16 @@ import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import androidx.webkit.ProfileStore
+import androidx.webkit.ScriptHandler
 import androidx.webkit.WebSettingsCompat
 import androidx.webkit.WebViewCompat
 import androidx.webkit.WebViewFeature
 import app.echoppe.data.Site
+import app.echoppe.filters.Category
+import app.echoppe.filters.Domains
+import app.echoppe.filters.PageScript
+import app.echoppe.filters.RequestType
+import app.echoppe.filters.Verdict
 import java.io.ByteArrayInputStream
 import java.util.concurrent.ConcurrentHashMap
 
@@ -45,23 +51,27 @@ class TabState {
  * The live WebViews, one per site, created the first time a tab is shown and kept so that switching
  * tabs never reloads a page. Each site gets its own WebView profile when the installed WebView
  * supports it ([isolated]): its own cookies, storage, cache and service workers, so no site can see
- * another's identifiers. On top of that, in every tab: third-party cookies are refused, the tracker
- * list is blocked, the "do not sell or share" signal (GPC) is sent, the `X-Requested-With` header
- * and ad attribution are off, and nothing a page does can open another app.
+ * another's identifiers. On top of that, in every tab: third-party cookies are refused, the filter
+ * lists block ads, trackers and cookie banners (each switchable per site), cookie consent is refused,
+ * the "do not sell or share" signal (GPC) is sent, the `X-Requested-With` header and ad attribution
+ * are off, and nothing a page does can open another app. Each tab reopens on its last page.
  */
 class WebPool(
     private val activity: Activity,
-    private val trackers: Trackers,
+    val filters: FilterLists,
     private val onNotice: (String) -> Unit,
     private val onFileChooser: (ValueCallback<Array<Uri>>, WebChromeClient.FileChooserParams) -> Boolean,
 ) {
     val isolated: Boolean = WebViewFeature.isFeatureSupported(WebViewFeature.MULTI_PROFILE)
     val sendsGpc: Boolean = WebViewFeature.isFeatureSupported(WebViewFeature.DOCUMENT_START_SCRIPT)
-    val trackerCount: Int get() = trackers.size
 
     private val views = HashMap<String, WebView>()
     // Read from WebView's network threads (shouldInterceptRequest).
     private val configs = ConcurrentHashMap<String, Site>()
+    // The page each tab shows, and the categories its lists exempt it from ($document exceptions).
+    private val pages = ConcurrentHashMap<String, Page>()
+    private val scripts = HashMap<String, List<ScriptHandler>>()
+    private val lastPages = activity.getSharedPreferences("last_pages", Context.MODE_PRIVATE)
     private val states = HashMap<String, TabState>()
     private val main = Handler(Looper.getMainLooper())
     private val prefs = activity.getSharedPreferences("profiles", Context.MODE_PRIVATE)
@@ -93,8 +103,20 @@ class WebPool(
         views[site.id] = wv
         // pauseTimers() outlives the WebViews it was called on: a view built later would start frozen.
         if (timersPaused) { wv.resumeTimers(); timersPaused = false }
-        wv.loadUrl(site.url)
+        wv.loadUrl(startUrl(site))
         return wv
+    }
+
+    /** The tab's last page when it is still on the site, else the site's address. */
+    private fun startUrl(site: Site): String {
+        val last = lastPages.getString(site.id, null) ?: return site.url
+        val host = Uri.parse(last).host ?: return site.url
+        return if (Domains.sameSite(host, site.host)) last else site.url
+    }
+
+    /** The lists changed: every tab gets the new page script (from its next page on). */
+    fun filtersChanged() {
+        views.forEach { (id, wv) -> configs[id]?.let { installScripts(wv, it) } }
     }
 
     /** Only the shown tab runs; the others are paused (timers, animations) but keep their page. */
@@ -112,6 +134,9 @@ class WebPool(
 
     fun home(site: Site) = views[site.id]?.loadUrl(site.url)
 
+    /** Requests blocked in the tab since the app started, all lists together. */
+    fun blocked(id: String) = state(id).blocked
+
     /** Drops the WebViews of sites no longer in the list (e.g. removed on another phone). */
     fun retain(ids: Set<String>) {
         (views.keys - ids).forEach { destroy(it) }
@@ -121,6 +146,7 @@ class WebPool(
     fun remove(id: String) {
         destroy(id)
         states.remove(id)
+        lastPages.edit().remove(id).apply()
         if (!isolated) return
         prefs.edit().putStringSet(KEY_PENDING, pending() + profileName(id)).apply()
         // The profile can only go once no WebView uses it; the destroy above is processed first.
@@ -172,6 +198,8 @@ class WebPool(
     private fun destroy(id: String) {
         val wv = views.remove(id) ?: return
         configs.remove(id)
+        pages.remove(id)
+        scripts.remove(id)
         if (shown == id) shown = null
         (wv.parent as? ViewGroup)?.removeView(wv)
         wv.stopLoading()
@@ -232,13 +260,31 @@ class WebPool(
                 }
 
             override fun shouldInterceptRequest(view: WebView, request: WebResourceRequest): WebResourceResponse? {
-                if (request.isForMainFrame) return null
                 val site = configs[id] ?: return null
-                if (!site.blockTrackers) return null
+                val url = request.url.toString()
                 val host = request.url.host ?: return null
-                trackers.match(host, site.host) ?: return null
-                main.post { state.blocked++ }
-                return WebResourceResponse("text/plain", "utf-8", ByteArrayInputStream(ByteArray(0)))
+                if (request.isForMainFrame) {
+                    pages[id] = page(url, host)
+                    return null
+                }
+                val page = pages[id] ?: page(site.url, site.host).also { pages[id] = it }
+                val type = RequestType.infer(url, request.requestHeaders["Accept"])
+                val sets = filters.sets
+                for (cat in Category.entries) {
+                    if (!site.blocks(cat) || cat in page.exempt) continue
+                    val set = sets[cat] ?: continue
+                    if (set.network.match(url, host, page.host, type) == Verdict.BLOCK) {
+                        main.post { state.blocked++ }
+                        return WebResourceResponse("text/plain", "utf-8", ByteArrayInputStream(ByteArray(0)))
+                    }
+                }
+                return null
+            }
+
+            override fun doUpdateVisitedHistory(view: WebView, url: String, isReload: Boolean) {
+                val site = configs[id] ?: return
+                val host = Uri.parse(url).host ?: return
+                if (url.startsWith("http") && Domains.sameSite(host, site.host)) lastPages.edit().putString(id, url).apply()
             }
 
             override fun onPageStarted(view: WebView, url: String, favicon: Bitmap?) {
@@ -278,8 +324,30 @@ class WebPool(
         }
     }
 
+    private fun page(url: String, host: String): Page {
+        val sets = filters.sets
+        return Page(host, Category.entries.filter { sets[it]?.network?.pageExempt(url, host) == true }.toSet())
+    }
+
+    /** The page script for this site: what its lists hide, and the cookie refusal. */
+    private fun installScripts(wv: WebView, site: Site) {
+        if (!sendsGpc) return
+        scripts.remove(site.id)?.forEach { it.remove() }
+        val sets = filters.sets
+        val cosmetics = Category.entries.filter { site.blocks(it) }.mapNotNull { cat ->
+            val set = sets[cat] ?: return@mapNotNull null
+            if (set.network.noElemHide(site.url, site.host)) return@mapNotNull null
+            set.cosmetics.forSite(site.host, genericHide = set.network.noGenericHide(site.url, site.host))
+        }
+        val script = PageScript.build(cosmetics, filters.cookieRefusal.takeIf { site.rejectCookies }) ?: return
+        scripts[site.id] = listOf(WebViewCompat.addDocumentStartJavaScript(wv, script, setOf("*")))
+    }
+
     private fun apply(wv: WebView, site: Site, old: Site?) {
         configs[site.id] = site
+        if (old == null || old.blockAds != site.blockAds || old.blockTrackers != site.blockTrackers || old.rejectCookies != site.rejectCookies) {
+            installScripts(wv, site)
+        }
         val s = wv.settings
         val default = WebSettingsDefaults.userAgent(activity)
         s.userAgentString = if (site.desktop) UserAgents.desktop(default) else UserAgents.mobile(default)
@@ -287,8 +355,8 @@ class WebPool(
         s.loadWithOverviewMode = site.desktop
         when {
             old == null -> Unit
-            old.url != site.url -> wv.loadUrl(site.url)
-            old.desktop != site.desktop || old.blockTrackers != site.blockTrackers -> wv.reload()
+            old.url != site.url -> { lastPages.edit().remove(site.id).apply(); wv.loadUrl(site.url) }
+            old.copy(name = site.name) != site -> wv.reload()
         }
     }
 
@@ -315,6 +383,8 @@ class WebPool(
 
     private fun cookies(wv: WebView): CookieManager =
         if (isolated) WebViewCompat.getProfile(wv).cookieManager else CookieManager.getInstance()
+
+    private class Page(val host: String, val exempt: Set<Category>)
 
     private companion object {
         const val KEY_PENDING = "to_delete"
