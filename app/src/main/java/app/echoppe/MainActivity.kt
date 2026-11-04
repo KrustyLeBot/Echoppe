@@ -46,6 +46,7 @@ class MainActivity : ComponentActivity() {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
         val app = application as EchoppeApp
+        app.extensions.onNotice = vm::show
         val prompts = Prompts(this) { intent, done ->
             onFiles?.invoke(emptyList())
             onFiles = done

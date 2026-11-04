@@ -45,6 +45,9 @@ class Extensions(private val context: Context, private val runtime: GeckoRuntime
     var popup by mutableStateOf<GeckoSession?>(null)
         private set
 
+    /** Short messages for the user (an extension still starting). */
+    var onNotice: (String) -> Unit = {}
+
     private val actionDelegate = object : WebExtension.ActionDelegate {
         override fun onBrowserAction(extension: WebExtension, session: GeckoSession?, action: WebExtension.Action) {
             if (session == null) defaultActions[extension.id] = action else tabActions[extension.id to session] = action
@@ -90,6 +93,7 @@ class Extensions(private val context: Context, private val runtime: GeckoRuntime
             if (spec == null) {
                 installing = false
                 ready = true
+                refresh()
                 if (failed.isNotEmpty()) error = "Installation impossible : ${failed.joinToString(", ")}. Vérifie la connexion."
                 else if (!onlyMissing) prefs.edit().putLong(KEY_UPDATED, System.currentTimeMillis()).apply()
                 return
@@ -122,15 +126,37 @@ class Extensions(private val context: Context, private val runtime: GeckoRuntime
 
     /** Presses the extension's button for [session], which opens its popup. */
     fun openButton(spec: ExtensionSpec, session: GeckoSession) {
-        val action = tabActions[spec.id to session]?.withDefault(defaultActions[spec.id] ?: return) ?: defaultActions[spec.id] ?: return
+        val default = defaultActions[spec.id]
+        val action = tabActions[spec.id to session]?.let { if (default != null) it.withDefault(default) else it } ?: default
+        if (action == null) return starting(spec)
         action.click()
     }
 
-    /** The extension's own settings page (uBlock's dashboard: filter lists, my filters…). */
+    /**
+     * The extension's own settings page (uBlock's dashboard: filter lists, my filters…), or [page]
+     * inside the extension. Null, with a message, while the extension is still starting: right after
+     * its installation its `moz-extension://` address is not known yet (uBlock prepares its lists for
+     * a minute or two the first time).
+     */
     fun optionsUrl(spec: ExtensionSpec, page: String? = null): String? {
-        val ext = installed[spec.id] ?: return null
-        if (page != null) return ext.metaData.baseUrl + page
-        return ext.metaData.optionsPageUrl
+        val ext = installed[spec.id] ?: run { onNotice("${spec.title} n'est pas installé"); return null }
+        val options = ext.metaData.optionsPageUrl?.takeIf { it.startsWith(SCHEME) }
+        val base = ext.metaData.baseUrl.takeIf { it.startsWith(SCHEME) } ?: options?.let { it.substringBeforeLast('/') + "/" }
+        if (base == null) {
+            starting(spec)
+            return null
+        }
+        return if (page != null) base + page else options ?: base
+    }
+
+    private fun starting(spec: ExtensionSpec) {
+        refresh()
+        onNotice("${spec.title} démarre encore : réessaie dans un instant")
+    }
+
+    /** Reads the installed extensions again: their addresses and buttons appear once they have started. */
+    private fun refresh() {
+        controller.list().accept({ list -> list.orEmpty().filter { ext -> SPECS.any { it.id == ext.id } }.forEach(::adopt) }, {})
     }
 
     fun closePopup() {
@@ -159,6 +185,7 @@ class Extensions(private val context: Context, private val runtime: GeckoRuntime
     }
 
     companion object {
+        private const val SCHEME = "moz-extension://"
         private const val KEY_UPDATED = "updated"
         private const val UPDATE_EVERY_MS = 4 * 24 * 60 * 60 * 1000L
 

@@ -164,6 +164,10 @@ class Tabs(
                     },
                 )
 
+            // Frames (ad slots included) get the same rule, silently: only web pages, never an app or the store.
+            override fun onSubframeLoadRequest(session: GeckoSession, request: GeckoSession.NavigationDelegate.LoadRequest): GeckoResult<AllowOrDeny> =
+                GeckoResult.fromValue(if (Navigation.decide(request.uri) == Decision.Allow) AllowOrDeny.ALLOW else AllowOrDeny.DENY)
+
             // Links to a new window (target=_blank, window.open) open in the same tab.
             override fun onNewSession(session: GeckoSession, uri: String): GeckoResult<GeckoSession>? {
                 session.loadUri(uri)
