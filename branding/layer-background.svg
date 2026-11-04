@@ -1,0 +1,11 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="512" height="512" viewBox="0 0 108 108">
+  <!-- Échoppe · izakaya 2.0: an izakaya with nobori banners, plaster and dark timber, kawara roof with bargeboard and ridge ends, tiled hisashi over a lattice door, long noren with a bag crest, kanban, sugidama, red lanterns, bench, stone lantern. Tiny floating island in isometric 3D, drawn on the Android adaptive-icon grid (108 units,
+       visible 72-unit square), the scene inside the 66-unit circle. Generated from iso.py. -->
+  <title>Échoppe</title>
+  <defs>
+    <linearGradient id="sky" gradientUnits="userSpaceOnUse" x1="0" y1="18" x2="0" y2="90"><stop offset="0" stop-color="#141A45"/><stop offset="0.6" stop-color="#3B2E7A"/><stop offset="1" stop-color="#C25C7A"/></linearGradient>
+    <clipPath id="tile"><rect x="18" y="18" width="72" height="72" rx="16"/></clipPath>
+  </defs>
+  <rect x="0" y="0" width="108" height="108" fill="url(#sky)"/>
+  <circle cx="75" cy="30" r="6" fill="#FFF3C4"/><circle cx="30" cy="28" r="0.45" fill="#FFF3C4" fill-opacity="0.8"/><circle cx="40" cy="23" r="0.45" fill="#FFF3C4" fill-opacity="0.8"/><circle cx="60" cy="22" r="0.45" fill="#FFF3C4" fill-opacity="0.8"/><circle cx="34" cy="40" r="0.45" fill="#FFF3C4" fill-opacity="0.8"/><circle cx="86" cy="46" r="0.45" fill="#FFF3C4" fill-opacity="0.8"/><circle cx="25" cy="54" r="0.45" fill="#FFF3C4" fill-opacity="0.8"/><circle cx="84" cy="62" r="0.45" fill="#FFF3C4" fill-opacity="0.8"/>
+</svg>

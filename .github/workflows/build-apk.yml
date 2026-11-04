@@ -1,0 +1,46 @@
+name: Build APK
+
+on:
+  push:
+    branches: [main, "claude/**", "ccr-**"]
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  apk:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Check out
+        uses: actions/checkout@v4
+      - name: Set up Java 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@v4
+      - name: Unit tests and release APK
+        run: |
+          set -o pipefail
+          ./gradlew testDebugUnitTest assembleRelease --console=plain 2>&1 | tee build.log
+      - name: Show build errors
+        if: failure()
+        run: |
+          grep -E '^e: |error:|What went wrong|Execution failed' -A3 build.log | head -80 || true
+      - name: Upload APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: echoppe-apk
+          path: app/build/outputs/apk/release/app-release.apk
+      - name: Publish release
+        if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          cp app/build/outputs/apk/release/app-release.apk Echoppe.apk
+          gh release delete latest --cleanup-tag --yes || true
+          gh release create latest Echoppe.apk --target "$GITHUB_SHA" --latest \
+            --title "Build $GITHUB_RUN_NUMBER" \
+            --notes "Build $GITHUB_RUN_NUMBER (commit ${GITHUB_SHA::7})"
