@@ -3,6 +3,8 @@ package app.echoppe.web
 import android.app.Activity
 import android.content.Context
 import android.net.Uri
+import android.os.Handler
+import android.os.Looper
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
@@ -43,6 +45,9 @@ class Tabs(
     private val states = HashMap<String, TabState>()
     private val lastPages = activity.getSharedPreferences("last_pages", Context.MODE_PRIVATE)
     private var shown: String? = null
+    private val main = Handler(Looper.getMainLooper())
+    // Invisible windows opened by window.open(), kept until they get their address.
+    private val catchers = HashSet<GeckoSession>()
 
     fun state(id: String): TabState = states.getOrPut(id) { TabState() }
 
@@ -155,23 +160,39 @@ class Tabs(
     private fun delegates(session: GeckoSession, id: String) {
         val state = state(id)
         session.navigationDelegate = object : GeckoSession.NavigationDelegate {
-            override fun onLoadRequest(session: GeckoSession, request: GeckoSession.NavigationDelegate.LoadRequest): GeckoResult<AllowOrDeny> =
-                GeckoResult.fromValue(
-                    when (val d = Navigation.decide(request.uri)) {
-                        Decision.Allow -> AllowOrDeny.ALLOW
-                        is Decision.Redirect -> { session.loadUri(d.url); AllowOrDeny.DENY }
-                        is Decision.Block -> { if (request.hasUserGesture) onNotice(d.reason); AllowOrDeny.DENY }
-                    },
-                )
+            override fun onLoadRequest(session: GeckoSession, request: GeckoSession.NavigationDelegate.LoadRequest): GeckoResult<AllowOrDeny> {
+                val newWindow = request.target == GeckoSession.NavigationDelegate.TARGET_WINDOW_NEW
+                // A web page meant for a new window (target=_blank) opens in this tab instead.
+                if (newWindow && request.uri.startsWith("http") && Navigation.decide(request.uri) == Decision.Allow) {
+                    main.post { session.loadUri(request.uri) }
+                    return GeckoResult.fromValue(AllowOrDeny.DENY)
+                }
+                return GeckoResult.fromValue(decide(session, request.uri, request.hasUserGesture) ?: AllowOrDeny.ALLOW)
+            }
 
             // Frames (ad slots included) get the same rule, silently: only web pages, never an app or the store.
             override fun onSubframeLoadRequest(session: GeckoSession, request: GeckoSession.NavigationDelegate.LoadRequest): GeckoResult<AllowOrDeny> =
                 GeckoResult.fromValue(if (Navigation.decide(request.uri) == Decision.Allow) AllowOrDeny.ALLOW else AllowOrDeny.DENY)
 
-            // Links to a new window (target=_blank, window.open) open in the same tab.
-            override fun onNewSession(session: GeckoSession, uri: String): GeckoResult<GeckoSession>? {
-                session.loadUri(uri)
-                return null
+            /**
+             * `window.open()` with no address (Amazon's "Ouvrir" in its app banner does this, then sends
+             * the new window to the app): an invisible window that takes the first real address it is
+             * given, opens it in this tab when it is a web page, refuses it otherwise, and closes.
+             */
+            override fun onNewSession(session: GeckoSession, uri: String): GeckoResult<GeckoSession> {
+                val catcher = GeckoSession(GeckoSessionSettings.Builder(session.settings).build())
+                catchers += catcher
+                catcher.navigationDelegate = object : GeckoSession.NavigationDelegate {
+                    override fun onLoadRequest(s: GeckoSession, request: GeckoSession.NavigationDelegate.LoadRequest): GeckoResult<AllowOrDeny> {
+                        if (request.uri == "about:blank") return GeckoResult.fromValue(AllowOrDeny.ALLOW)
+                        if (decide(session, request.uri, true) == null) main.post { session.loadUri(request.uri) }
+                        main.post { catchers.remove(catcher); catcher.close() }
+                        return GeckoResult.fromValue(AllowOrDeny.DENY)
+                    }
+                }
+                // Nothing came: the window is dropped.
+                main.postDelayed({ if (catchers.remove(catcher)) catcher.close() }, 30_000)
+                return GeckoResult.fromValue(catcher)
             }
 
             override fun onLocationChange(session: GeckoSession, url: String?, perms: MutableList<ContentPermission>, hasUserGesture: Boolean) {
@@ -216,6 +237,16 @@ class Tabs(
                 callback: GeckoSession.PermissionDelegate.MediaCallback,
             ) = callback.reject()
         }
+    }
+
+    /**
+     * What [Navigation] says about [uri] for a page in [session]: null to let it load, DENY when it was
+     * refused (with a message if the user tapped) or redirected to its web fallback.
+     */
+    private fun decide(session: GeckoSession, uri: String, byUser: Boolean): AllowOrDeny? = when (val d = Navigation.decide(uri)) {
+        Decision.Allow -> null
+        is Decision.Redirect -> { main.post { session.loadUri(d.url) }; AllowOrDeny.DENY }
+        is Decision.Block -> { if (byUser) onNotice(d.reason); AllowOrDeny.DENY }
     }
 
     /** The content process died: the tab is closed, and rebuilt on its last page when shown again. */

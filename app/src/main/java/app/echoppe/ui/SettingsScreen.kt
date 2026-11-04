@@ -122,10 +122,18 @@ private fun ProtectionSettings(extensions: Extensions, open: (String, String) ->
         }
     }
     SettingsCard {
-        Text("Réglages de uBlock Origin", fontWeight = FontWeight.SemiBold)
+        Text("À faire une fois dans uBlock Origin", fontWeight = FontWeight.SemiBold)
         SettingsHint(
-            "Dans « Listes de filtres », coche la catégorie « Nuisances » (Annoyances) : bandeaux de cookies, widgets de chat, " +
-                "bannières « ouvrir l'appli », pop-ups de newsletter. uBlock met ses listes à jour tout seul.",
+            "1. « Bannières d'appli » : abonne uBlock à la liste Fanboy's Mobile Notifications (bandeaux « ouvrir l'appli », " +
+                "dont celui d'Amazon), absente de son catalogue. Touche « S'abonner » sur la page qui s'ouvre.",
+        )
+        OutlinedButton(
+            onClick = { extensions.optionsUrl(Extensions.UBLOCK, Extensions.subscribePage(Extensions.MOBILE_BANNERS))?.let { open("Bannières d'appli", it) } },
+            enabled = Extensions.UBLOCK.id in extensions.installed,
+        ) { Text("Bannières d'appli") }
+        SettingsHint(
+            "2. « Listes de filtres » : coche la catégorie « Nuisances » (Annoyances) : bandeaux de cookies, widgets de chat, " +
+                "pop-ups de newsletter. uBlock met ensuite toutes ses listes à jour tout seul.",
         )
         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             OutlinedButton(
@@ -135,7 +143,7 @@ private fun ProtectionSettings(extensions: Extensions, open: (String, String) ->
             OutlinedButton(
                 onClick = { extensions.optionsUrl(Extensions.UBLOCK)?.let { open("uBlock Origin", it) } },
                 enabled = Extensions.UBLOCK.id in extensions.installed,
-            ) { Text("Tout") }
+            ) { Text("Tous les réglages") }
         }
     }
     SettingsCard {

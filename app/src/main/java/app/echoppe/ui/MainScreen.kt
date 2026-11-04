@@ -162,6 +162,15 @@ private fun MainScreen(vm: EchoppeViewModel, tabs: Tabs, extensions: Extensions,
                     TextButton(onClick = { extensions.install(onlyMissing = true) }) { Text("Réessayer") }
                 }
             }
+            if (Extensions.UBLOCK.id in extensions.installed && !extensions.setupDone) {
+                SuiteBanner(
+                    "Deux réglages à faire une fois : les bannières « ouvrir l'appli » et les nuisances (cookies, chats).",
+                    title = "Termine la configuration de uBlock", icon = Icons.Default.Shield,
+                ) {
+                    TextButton(onClick = extensions::markSetupDone) { Text("C'est fait") }
+                    TextButton(onClick = { vm.screen = Screen.Settings }) { Text("Configurer") }
+                }
+            }
             UpdateBanner(vm.updates)
             when {
                 site == null -> EmptyState(onAdd = { if (!vm.readOnly()) adding = true })

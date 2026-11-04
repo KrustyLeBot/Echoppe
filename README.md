@@ -39,7 +39,7 @@ jour les extensions does it by hand).
 
 | Extension | Licence | Job |
 |---|---|---|
-| [uBlock Origin](https://github.com/gorhill/uBlock) | GPL-3.0 | Blocks ads, trackers and malware with its filter lists (EasyList, EasyPrivacy, uBlock filters…), which it updates itself. With the « Nuisances » (Annoyances) lists ticked (Réglages → Listes de filtres, once per phone): cookie notices, chat widgets, « open in the app » banners, newsletter pop-ups. Its popup (tab menu → uBlock Origin) turns it off for one site or picks an element to hide for good. |
+| [uBlock Origin](https://github.com/gorhill/uBlock) | GPL-3.0 | Blocks ads, trackers and malware with its filter lists (EasyList, EasyPrivacy, uBlock filters…), which it updates itself. Two settings once per phone, from Réglages (a banner reminds you until done): subscribe to [Fanboy's Mobile Notifications](https://secure.fanboy.co.nz/fanboy-mobile-notifications.txt) (« open in the app » banners, Amazon's included; it is in no list of uBlock's catalogue), through uBlock's own subscribe page, one tap; and tick the « Nuisances » (Annoyances) lists: cookie notices, chat widgets, newsletter pop-ups. Its popup (tab menu → uBlock Origin) turns it off for one site or picks an element to hide for good. |
 | [Consent-O-Matic](https://github.com/cavi-au/Consent-O-Matic) | MIT | Answers cookie consent pop-ups with « refuse », on every site that uses one of the 200+ consent tools it knows (OneTrust, Didomi, Quantcast, Cookiebot, TrustArc, Sourcepoint…); its rules are updated from its repository. Defaults: every category off, so only necessary cookies (login, cart) remain. |
 
 No tool refuses cookies on 100 % of sites: a home-made banner Consent-O-Matic does not know is hidden
@@ -55,7 +55,7 @@ by uBlock's cookie notice lists instead, which, under the GDPR, means no consent
 | Tracking parameters | Stripped from links (`utm_*`, `fbclid`…). |
 | Global Privacy Control | Sent to every site (the legal "do not sell or share" signal). |
 | No exit to other apps | Only `http(s)` pages load. `market://`, `intent://`, custom schemes and Play Store / App Store links are refused; an `intent://` link with a web fallback opens that fallback in the tab. A page can never start another app. |
-| No pop-up windows | `target=_blank` and `window.open` open in the same tab. |
+| No pop-up windows | `target=_blank` and `window.open` open in the same tab. A window opened empty, then sent elsewhere (Amazon's « Ouvrir » in its app banner), is an invisible catcher: a web page opens in the tab, an app link is refused. |
 | No permissions | Location, camera, microphone and notifications are always refused. |
 | No telemetry | No analytics in the app, Firefox telemetry is not set up, login saving is off. App backup is off. |
 

@@ -1,6 +1,7 @@
 package app.echoppe.web
 
 import android.content.Context
+import android.net.Uri
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateMapOf
 import androidx.compose.runtime.mutableStateOf
@@ -44,6 +45,15 @@ class Extensions(private val context: Context, private val runtime: GeckoRuntime
         private set
     var popup by mutableStateOf<GeckoSession?>(null)
         private set
+
+    /** The user said uBlock's two one-time settings (app banners list, annoyances) are done. */
+    var setupDone by mutableStateOf(prefs.getBoolean(KEY_SETUP, false))
+        private set
+
+    fun markSetupDone() {
+        setupDone = true
+        prefs.edit().putBoolean(KEY_SETUP, true).apply()
+    }
 
     /** Short messages for the user (an extension still starting). */
     var onNotice: (String) -> Unit = {}
@@ -187,10 +197,18 @@ class Extensions(private val context: Context, private val runtime: GeckoRuntime
     companion object {
         private const val SCHEME = "moz-extension://"
         private const val KEY_UPDATED = "updated"
+        private const val KEY_SETUP = "ublock_setup_done"
         private const val UPDATE_EVERY_MS = 4 * 24 * 60 * 60 * 1000L
 
         val UBLOCK = ExtensionSpec("uBlock0@raymondhill.net", "ublock-origin", "uBlock Origin", "Pubs, traqueurs, bandeaux, widgets")
         val CONSENT = ExtensionSpec("gdpr@cavi.au.dk", "consent-o-matic", "Consent-O-Matic", "Refus automatique des cookies")
         val SPECS = listOf(UBLOCK, CONSENT)
+
+        /** "Open in the app" banners: in no list of uBlock's catalogue, Amazon's included. */
+        val MOBILE_BANNERS = "Fanboy's Mobile Notifications" to "https://secure.fanboy.co.nz/fanboy-mobile-notifications.txt"
+
+        /** uBlock's own page for subscribing to a list by its address: one tap on « S'abonner ». */
+        fun subscribePage(list: Pair<String, String>): String =
+            "asset-viewer.html?url=${Uri.encode(list.second)}&title=${Uri.encode(list.first)}&subscribe=1"
     }
 }
